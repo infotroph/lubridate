@@ -1,55 +1,36 @@
 context("Namespace")
 
-if (file.exists("../../00check.log")) {
-  # test was invoked by R CMD check -> package is already built
-  R_test_lib <- normalizePath("../..")
-  env <- paste0("R_LIBS=", R_test_lib, ":", Sys.getenv("R_LIBS"))
-} else {
-  # We're testing in the source directory -> need to build and install
-  R_test_lib <- file.path(tempdir(), "Rlib")
-  env <- ""
-  ## dir.create(R_test_lib)
-  ## on.exit(unlink(R_test_lib, recursive = TRUE))
-  ## system2(
-  ##   "R",
-  ##   c("CMD install",
-  ##     paste0("--library=", R_test_lib),
-  ##     "--no-docs --no-help --no-demo --no-data --no-test-load",
-  ##     normalizePath("../..")),
-  ##   stdout = TRUE, stderr = TRUE)
+eval_detached <- function(expr) {
+  l_pos <- which(search() == "package:lubridate")
+  m_pos <- which(search() == "package:methods")
+
+  if (length(l_pos) > 0) {
+    l_ns <- getNamespace("lubridate")
+    on.exit(attachNamespace(l_ns, pos = l_pos))
+    detach("package:lubridate", character.only = TRUE)
+  }
+  if (length(m_pos) > 0) {
+    m_ns <- getNamespace("methods")
+    on.exit(attachNamespace(m_ns, pos = m_pos), add = TRUE)
+    detach("package:methods", character.only = TRUE)
+  }
+
+  eval(expr)
 }
 
-do_Rscript <- function(expr) {
-  paste(
-    system2("Rscript",
-            args = c("--vanilla", "--default-packages=NULL", "-e", shQuote(expr)),
-            env = c("R_TESTS=", env),
-            stdout = TRUE, stderr = TRUE),
-    collapse = "\n")
-}
-
-test_that("methods is not attached", {
-  skip_on_cran()
-  # Checking test assumptions.
-  # If this fails, namespace tests may not be needed anymore!
-  expect_match(
-    do_Rscript("'package:methods' %in% search()"),
-    "FALSE")
+test_that("methods is not attached", { # confirming test assumptions
+  expect_false(eval_detached('package:methods' %in% search()))
 })
 
 test_that("lubridate:: calls work when methods is not attached", {
-  skip_on_cran()
-  expect_match( # https://github.com/tidyverse/lubridate/issues/314
-    do_Rscript(
-      "lubridate::round_date(as.POSIXct('2017-10-03 03:01:13Z'), 'minute')"),
-    as.character(round_date(as.POSIXct('2017-10-03 03:01:13Z'), 'minute')),
-    fixed = TRUE)
-  expect_match( # https://github.com/tidyverse/lubridate/issues/407
-    do_Rscript("lubridate::days(1)"),
-    as.character(days(1)),
-    fixed = TRUE)
-  expect_match( # https://github.com/tidyverse/lubridate/issues/499
-    do_Rscript("lubridate::dhours(22)"),
-    as.character(dhours(22)),
-    fixed = TRUE)
+  ts <- as.POSIXct('2017-10-03 03:01:13Z')
+  expect_equal( # https://github.com/tidyverse/lubridate/issues/314
+    eval_detached(lubridate::round_date(ts, 'minute')),
+    round_date(ts, 'minute'))
+  expect_equal( # https://github.com/tidyverse/lubridate/issues/407
+    eval_detached(lubridate::days(1)),
+    days(1))
+  expect_equal( # https://github.com/tidyverse/lubridate/issues/499
+    eval_detached(lubridate::dhours(22)),
+    dhours(22))
 })
